@@ -156,7 +156,7 @@ body.mopen #soverlay{display:block}
 .marker{width:24px;flex:none;text-align:center;user-select:none;padding-top:3px;line-height:1.55;color:var(--fg)}
 .todo-check{width:16px;height:16px;margin:7px 6px 0 2px;flex:none;accent-color:var(--accent);cursor:pointer}
 .bc.done{text-decoration:line-through;color:var(--muted)}
-.tgl{width:24px;height:24px;flex:none;margin-top:2px;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--fg);border-radius:5px;transition:transform .15s}
+.tgl{width:28px;height:28px;flex:none;margin-top:0;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--fg);border-radius:5px;transition:transform .15s}
 .tgl:hover{background:var(--hover)}
 .tgl.open{transform:rotate(90deg)}
 .callout{display:flex;gap:8px;background:var(--callout);border-radius:8px;padding:14px 14px 14px 10px;margin:3px 0;align-items:flex-start}
@@ -193,7 +193,17 @@ html[data-theme="dark"] code{color:#ff8f85}
 .pi{display:flex;gap:10px;align-items:center;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:14px}
 .pi:hover,.pi.sel{background:var(--hover)}
 .pi.danger{color:var(--danger)}
-.pi .ic{width:24px;height:24px;flex:none;border:1px solid var(--border);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;background:var(--bg)}
+.pi .ic{width:28px;height:28px;flex:none;border:1px solid var(--border);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:12px;background:var(--bg)}
+
+.toggle-menu-icon{
+  font-size:17px;
+  line-height:1;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+
+  
 .pi .pit{flex:1;min-width:0}
 .pi .pit small{display:block;color:var(--muted);font-size:11.5px;font-weight:400}
 .pi .chk{margin-left:auto;color:var(--accent);font-size:13px}
@@ -356,7 +366,7 @@ var SLASH_ITEMS = [
   {type:'bullet',  ic:'•',           label:'Lista de viñetas', desc:'Lista simple con puntos',      kw:'viñetas lista bullet puntos'},
   {type:'number',  ic:'1.',          label:'Lista numerada',   desc:'Lista con números',            kw:'numerada ordenada numeros'},
   {type:'todo',    ic:'☑',           label:'Lista de tareas',  desc:'Casillas para marcar',         kw:'tareas pendientes checkbox todo'},
-  {type:'toggle',  ic:'▸',           label:'Desplegable',      desc:'Oculta y muestra contenido',   kw:'desplegable plegable toggle'},
+  {type:'toggle',  ic:'<span class="toggle-menu-icon">▶</span>', label:'Desplegable', desc:'Oculta y muestra contenido', kw:'desplegable plegable toggle'},
   {type:'quote',   ic:'❝',           label:'Cita',             desc:'Destaca una cita',             kw:'cita quote'},
   {type:'callout', ic:'💡',          label:'Llamada',          desc:'Nota destacada con icono',     kw:'llamada nota aviso callout'},
   {type:'divider', ic:'—',           label:'Divisor',          desc:'Línea separadora',             kw:'divisor separador linea'},
@@ -2225,56 +2235,65 @@ function coverAdvancedPopup(x,y){
       return;
     }
 
-    grid.innerHTML = photos.map(function(photo){
-      var thumbnail =
-        photo.urls.small ||
-        photo.urls.thumb;
+    grid.innerHTML = photos.map(function(photo, index){
+  var thumbnail =
+    photo.urls.small ||
+    photo.urls.thumb;
 
-      var completeImage =
-        photo.urls.regular ||
-        photo.urls.full;
+  return (
+    '<button class="unsplash-result"' +
+      ' data-index="' + index + '"' +
+      ' title="Foto de ' +
+        esc(photo.user.name || 'Unsplash') +
+      '"' +
+      ' style="background-image:url(\'' +
+        esc(thumbnail) +
+      '\')">' +
+    '</button>'
+  );
+}).join('');
 
-      return (
-        '<button class="unsplash-result"' +
-          ' data-full="' + esc(completeImage) + '"' +
-          ' data-download="' +
-            esc(photo.links.download_location || '') +
-          '"' +
-          ' title="Foto de ' +
-            esc(photo.user.name || 'Unsplash') +
-          '"' +
-          ' style="background-image:url(\'' +
-            esc(thumbnail) +
-          '\')">' +
-        '</button>'
-      );
-    }).join('');
+$$('.unsplash-result', grid).forEach(function(button){
+  button.addEventListener('click', function(){
+    var photo = photos[Number(button.dataset.index)];
 
-    $$('.unsplash-result', grid).forEach(function(button){
-      button.addEventListener('click', function(){
-        var imageUrl = button.dataset.full;
-        var downloadLocation = button.dataset.download;
+    if(!photo || !photo.urls){
+      return;
+    }
 
-        var accessKey =
-          localStorage.getItem(
-            'cuaderno_unsplash_access_key'
-          ) || '';
+    var imageUrl =
+      photo.urls.regular ||
+      photo.urls.full ||
+      photo.urls.small;
 
-        if(downloadLocation && accessKey){
-          fetch(
-            downloadLocation +
-            '?client_id=' +
-            encodeURIComponent(accessKey)
-          ).catch(function(){});
-        }
+    var downloadLocation =
+      photo.links && photo.links.download_location
+        ? photo.links.download_location
+        : '';
 
-        choose(
-          'url("' +
-          imageUrl.replace(/"/g, '%22') +
-          '")'
-        );
-      });
-    });
+    var accessKey =
+      localStorage.getItem(
+        'cuaderno_unsplash_access_key'
+      ) || '';
+
+    if(downloadLocation && accessKey){
+      fetch(
+        downloadLocation +
+        '?client_id=' +
+        encodeURIComponent(accessKey)
+      ).catch(function(){});
+    }
+
+    cur().cover =
+      'url(' + JSON.stringify(imageUrl) + ')';
+
+    cur().coverPos = 50;
+
+    closePopup();
+    renderPage();
+    save();
+  });
+});
   }
 
   saveKeyButton.addEventListener('click', function(){
@@ -2421,7 +2440,7 @@ imagePopup=function(b){
 };
 
 function blockColorMenu(b,x,y){var colors=[['Predeterminado',''],['Gris','#787774'],['Marrón','#9f6b53'],['Naranja','#d9730d'],['Amarillo','#cb912f'],['Verde','#448361'],['Azul','#337ea9'],['Morado','#9065b0'],['Rosa','#c14c8a'],['Rojo','#d44c47']];var p=popup(x,y);p.innerHTML='<div class="plabel">Color del texto</div><div class="color-grid">'+colors.map(function(c){return '<button class="color-swatch" title="'+c[0]+'" data-c="'+c[1]+'" style="background:'+(c[1]||'var(--bg)')+'"></button>'}).join('')+'</div>';$$('.color-swatch',p).forEach(function(sw){sw.onclick=function(){b.color=sw.dataset.c;closePopup();renderBlocks();save()}});placePopup(x,y)}
-var _blockElBase=blockEl;blockEl=function(b){var w=_blockElBase(b);var bc=$('.bc',w);if(bc&&b.color)bc.style.color=b.color;var bh=$('.bh',w);if(bh){var chip=document.createElement('button');chip.className='block-type-chip';chip.title='Cambiar tipo de bloque';chip.textContent=({h1:'H1',h2:'H2',h3:'H3',bullet:'•',number:'1.',todo:'☑',quote:'❝',callout:'💡',code:'</>',image:'🖼',table:'▦',page:'📄'}[b.type]||'T');chip.onclick=function(e){e.stopPropagation();var r=chip.getBoundingClientRect();typeMenu(b,r.left,r.bottom+5)};bh.insertBefore(chip,bh.firstChild);}return w};
+var _blockElBase=blockEl;blockEl=function(b){var w=_blockElBase(b);var bc=$('.bc',w);if(bc&&b.color)bc.style.color=b.color;var bh=$('.bh',w);if(bh){var chip=document.createElement('button');chip.className='block-type-chip';chip.title='Cambiar tipo de bloque';chip.textContent=({h1:'H1',h2:'H2',h3:'H3',bullet:'•',number:'1.',todo:'☑',toggle:'▶',quote:'❝',callout:'💡',code:'</>',image:'🖼',table:'▦',page:'📄'}[b.type]||'T');chip.onclick=function(e){e.stopPropagation();var r=chip.getBoundingClientRect();typeMenu(b,r.left,r.bottom+5)};bh.insertBefore(chip,bh.firstChild);}return w};
 blockMenu=function(b,x,y){var p=popup(x,y);p.innerHTML='<div class="pi" data-a="conv"><span class="ic">⇄</span><span class="pit">Convertir en…</span></div><div class="pi" data-a="comment"><span class="ic">💬</span><span class="pit">Agregar comentario</span></div><div class="pi" data-a="color"><span class="ic">A</span><span class="pit">Color</span></div><div class="pi" data-a="link"><span class="ic">🔗</span><span class="pit">Copiar enlace al bloque</span></div><div class="psep"></div><div class="pi" data-a="up"><span class="ic">↑</span><span class="pit">Mover arriba</span></div><div class="pi" data-a="down"><span class="ic">↓</span><span class="pit">Mover abajo</span></div><div class="pi" data-a="dup"><span class="ic">⧉</span><span class="pit">Duplicar</span></div><div class="psep"></div><div class="pi danger" data-a="del"><span class="ic">🗑</span><span class="pit">Eliminar</span></div>';placePopup(x,y);$$('.pi',p).forEach(function(el){el.onclick=function(){var a=el.dataset.a;if(a==='conv'){typeMenu(b,x,y);return}if(a==='color'){blockColorMenu(b,x,y);return}closePopup();var bs=curBlocks(),i=bs.indexOf(b);if(a==='comment'){openCommentsPanel(b.id,true)}if(a==='link'){copyText(pageLink(state.current)+'&block='+encodeURIComponent(b.id),'Enlace al bloque copiado')}if(a==='up'&&i>0){bs.splice(i,1);bs.splice(i-1,0,b);renderBlocks();save()}if(a==='down'&&i<bs.length-1){bs.splice(i,1);bs.splice(i+1,0,b);renderBlocks();save()}if(a==='dup'){var c=JSON.parse(JSON.stringify(b));c.id=uid();bs.splice(i+1,0,c);renderBlocks();save()}if(a==='del'){removeBlock(b);renderBlocks();save()}}});};
 
 function selectedContext(){var s=window.getSelection();if(!s.rangeCount||s.isCollapsed)return null;var n=s.anchorNode;if(n.nodeType!==1)n=n.parentElement;var bc=n&&n.closest?n.closest('.bc'):null;if(!bc)return null;return {text:s.toString(),block:blockOf(bc)}}
