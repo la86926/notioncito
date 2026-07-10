@@ -1136,7 +1136,7 @@ function emojiPopup(x, y, cb){
     });
   });
 }
-function coverPopup(x, y){
+function coverAdvancedPopup(x, y){
   var p = popup(x, y);
   p.innerHTML = '<div class="plabel">Portada</div><div class="cgrid">'
     + COVERS.map(function(c, i){ return '<div data-i="' + i + '" style="background:' + c + '"></div>'; }).join('')
@@ -1350,22 +1350,31 @@ contentEl.addEventListener('click', function(e){
     renderPage(); renderSidebar(); save();
     return;
   }
+ 
+
+
+
+
+
+
   if(t.closest('#addCover')){
-    
-
-
-```javascript
-if(t.closest('#addCover')){
   var addCoverBtn = t.closest('#addCover');
   var addCoverRect = addCoverBtn.getBoundingClientRect();
 
-  coverPopup(
+  coverAdvancedPopup(
     Math.max(8, addCoverRect.left),
     addCoverRect.bottom + 8
   );
 
   return;
 }
+
+  
+
+
+
+
+
   if(t.closest('#picon')){
     var ri = t.closest('#picon').getBoundingClientRect();
     emojiPopup(ri.left, ri.bottom + 6, function(v){
@@ -1376,7 +1385,7 @@ if(t.closest('#addCover')){
   }
   if(t.closest('#coverChange')){
     var rc = t.closest('#coverChange').getBoundingClientRect();
-    coverPopup(Math.max(8, rc.left - 140), rc.bottom + 8);
+    coverAdvancedPopup(Math.max(8, rc.left - 140), rc.bottom + 8);
     return;
   }
   if(t.closest('#coverRemove')){
