@@ -306,8 +306,26 @@ function norm(s){ return String(s || '').toLowerCase().normalize('NFD').replace(
 
 var LS = 'cuaderno_data_v1';
 var state = null, saveT = null, popEl = null, modalEl = null, fmtEl = null, selT = null;
-var dragId = null, dropT = null;
+
+
+  var dragId = null, dropT = null;
 var slash = { open:false, blockId:null, filter:'', idx:0, items:[] };
+
+/* ---------- historial para Deshacer y Rehacer ---------- */
+var undoStack = [];
+var redoStack = [];
+var undoTypingActive = false;
+var undoTypingTimer = null;
+var MAX_UNDO_STEPS = 100;
+
+/* ---------- última celda activa de una tabla ---------- */
+var activeTableCell = {
+  blockId: null,
+  row: -1,
+  column: -1
+};
+
+  
 
 var contentEl = document.getElementById('content');
 var topbarEl  = document.getElementById('topbar');
@@ -406,13 +424,122 @@ function save(){
   clearTimeout(saveT);
   saveT = setTimeout(function(){ saveNow(); flashSaved(); }, 400);
 }
-function flashSaved(){
+
+
+
+  function flashSaved(){
   var t = $('#savedTag'); if(!t) return;
   t.classList.add('show');
   clearTimeout(flashSaved.t);
   flashSaved.t = setTimeout(function(){ t.classList.remove('show'); }, 1300);
 }
-function applyTheme(){ document.documentElement.dataset.theme = state.ui.dark ? 'dark' : 'light'; }
+
+/* ---------- Deshacer y Rehacer ---------- */
+function stateSnapshot(){
+  return JSON.stringify(state);
+}
+
+function pushUndoSnapshot(){
+  if(!state) return;
+
+  var snapshot = stateSnapshot();
+  var lastSnapshot = undoStack.length
+    ? undoStack[undoStack.length - 1]
+    : null;
+
+  if(snapshot === lastSnapshot) return;
+
+  undoStack.push(snapshot);
+
+  if(undoStack.length > MAX_UNDO_STEPS){
+    undoStack.shift();
+  }
+
+  redoStack = [];
+}
+
+function beginTypingHistory(){
+  if(!undoTypingActive){
+    pushUndoSnapshot();
+    undoTypingActive = true;
+  }
+
+  clearTimeout(undoTypingTimer);
+
+  undoTypingTimer = setTimeout(function(){
+    undoTypingActive = false;
+  }, 700);
+}
+
+function stopTypingHistory(){
+  clearTimeout(undoTypingTimer);
+  undoTypingActive = false;
+}
+
+function restoreSnapshot(snapshot){
+  if(!snapshot) return;
+
+  try{
+    state = JSON.parse(snapshot);
+  }catch(error){
+    console.warn('No se pudo restaurar el historial:', error);
+    return;
+  }
+
+  stopTypingHistory();
+  closePopup();
+
+  if(modalEl){
+    closeModal();
+  }
+
+  if(fmtEl){
+    fmtEl.hidden = true;
+  }
+
+  fixOrphans();
+  applyTheme();
+  renderAll();
+  saveNow();
+  flashSaved();
+}
+
+function undoAction(){
+  if(!undoStack.length) return;
+
+  var currentSnapshot = stateSnapshot();
+  var previousSnapshot = undoStack.pop();
+
+  redoStack.push(currentSnapshot);
+
+  if(redoStack.length > MAX_UNDO_STEPS){
+    redoStack.shift();
+  }
+
+  restoreSnapshot(previousSnapshot);
+}
+
+function redoAction(){
+  if(!redoStack.length) return;
+
+  var currentSnapshot = stateSnapshot();
+  var nextSnapshot = redoStack.pop();
+
+  undoStack.push(currentSnapshot);
+
+  if(undoStack.length > MAX_UNDO_STEPS){
+    undoStack.shift();
+  }
+
+  restoreSnapshot(nextSnapshot);
+}
+
+function applyTheme(){
+  document.documentElement.dataset.theme = state.ui.dark ? 'dark' : 'light';
+}
+
+
+  
 
 /* ---------- contenido inicial ---------- */
 function seed(){
@@ -1161,6 +1288,54 @@ topbarEl.addEventListener('click', function(e){
   }
 });
 
+
+
+
+
+
+
+  /* ---------- historial de escritura ---------- */
+contentEl.addEventListener('beforeinput', function(e){
+  var target = e.target;
+
+  var isEditable =
+    target.id === 'ptitle' ||
+    target.tagName === 'TD' ||
+    target.isContentEditable ||
+    (target.closest && target.closest('[contenteditable="true"]'));
+
+  if(!isEditable) return;
+
+  beginTypingHistory();
+});
+
+/* ---------- guardar la última celda activa ---------- */
+contentEl.addEventListener('focusin', function(e){
+  var cell = e.target.closest ? e.target.closest('td') : null;
+
+  if(!cell) return;
+
+  var blockWrapper = cell.closest('.block');
+  var rowElement = cell.parentElement;
+  var tableBody = rowElement.parentElement;
+
+  activeTableCell.blockId = blockWrapper
+    ? blockWrapper.dataset.id
+    : null;
+
+  activeTableCell.row =
+    Array.prototype.indexOf.call(
+      tableBody.children,
+      rowElement
+    );
+
+  activeTableCell.column =
+    Array.prototype.indexOf.call(
+      rowElement.children,
+      cell
+    );
+});
+
 /* ---------- eventos: contenido (clic) ---------- */
 contentEl.addEventListener('click', function(e){
   var t = e.target;
@@ -1236,16 +1411,68 @@ contentEl.addEventListener('click', function(e){
     return;
   }
   if(t.closest('.t-dr')){
-    if(b.rows.length > 1){ b.rows.pop(); renderBlocks(); save(); }
+  if(!b.rows || b.rows.length <= 1) return;
+
+  pushUndoSnapshot();
+  stopTypingHistory();
+
+  var rowIndex = b.rows.length - 1;
+
+  if(
+    activeTableCell.blockId === b.id &&
+    activeTableCell.row >= 0 &&
+    activeTableCell.row < b.rows.length
+  ){
+    rowIndex = activeTableCell.row;
+  }
+
+  b.rows.splice(rowIndex, 1);
+
+  activeTableCell.blockId = null;
+  activeTableCell.row = -1;
+  activeTableCell.column = -1;
+
+  renderBlocks();
+  save();
+  return;
+}
+
+if(t.closest('.t-dc')){
+  if(
+    !b.rows ||
+    !b.rows[0] ||
+    b.rows[0].length <= 1
+  ){
     return;
   }
-  if(t.closest('.t-dc')){
-    if(b.rows[0] && b.rows[0].length > 1){
-      b.rows.forEach(function(r){ r.pop(); });
-      renderBlocks(); save();
+
+  pushUndoSnapshot();
+  stopTypingHistory();
+
+  var columnIndex = b.rows[0].length - 1;
+
+  if(
+    activeTableCell.blockId === b.id &&
+    activeTableCell.column >= 0 &&
+    activeTableCell.column < b.rows[0].length
+  ){
+    columnIndex = activeTableCell.column;
+  }
+
+  b.rows.forEach(function(row){
+    if(columnIndex < row.length){
+      row.splice(columnIndex, 1);
     }
-    return;
-  }
+  });
+
+  activeTableCell.blockId = null;
+  activeTableCell.row = -1;
+  activeTableCell.column = -1;
+
+  renderBlocks();
+  save();
+  return;
+}
   if(t.closest('.pageblock')){
     if(b.pageId && state.pages[b.pageId]) openPage(b.pageId);
     return;
@@ -1956,12 +2183,39 @@ initFmt=function(){fmtEl=document.createElement('div');fmtEl.id='fmt';fmtEl.hidd
 
 /* ---------- atajos globales y arranque ---------- */
 document.addEventListener('keydown', function(e){
+  var commandPressed = e.ctrlKey || e.metaKey;
+  var key = e.key.toLowerCase();
+
+  /* Command + Z o Control + Z */
+  if(commandPressed && key === 'z' && !e.shiftKey){
+    e.preventDefault();
+    undoAction();
+    return;
+  }
+
+  /* Command + Shift + Z o Control + Shift + Z */
+  if(commandPressed && key === 'z' && e.shiftKey){
+    e.preventDefault();
+    redoAction();
+    return;
+  }
+
+  /* Control + Y, utilizado en algunos navegadores de Windows */
+  if(e.ctrlKey && key === 'y'){
+    e.preventDefault();
+    redoAction();
+    return;
+  }
+
   if(e.key === 'Escape'){
     if(modalEl){ closeModal(); return; }
     if(popEl){ closePopup(); return; }
     if(fmtEl) fmtEl.hidden = true;
     return;
   }
+
+
+  
   if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k'){
     e.preventDefault();
     openSearch();
