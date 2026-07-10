@@ -660,6 +660,50 @@ function crumbHtml(){
       + '<button class="crumb" data-id="' + pg.id + '">' + (pg.icon ? pg.icon + ' ' : '') + (esc(pg.title) || 'Sin título') + '</button>';
   }).join('');
 }
+function applyCoverBackground(element, value){
+  if(!element) return;
+
+  var coverValue = String(value || '').trim();
+
+  element.style.background = '';
+  element.style.backgroundImage = '';
+  element.style.backgroundColor = '';
+
+  if(!coverValue) return;
+
+  /*
+   * Portadas que ya vienen envueltas en url(...)
+   * Por ejemplo, portadas antiguas de Unsplash.
+   */
+  if(/^url\(/i.test(coverValue)){
+    element.style.backgroundImage = coverValue;
+  }
+
+  /*
+   * Colores y degradados.
+   */
+  else if(
+    /gradient\(/i.test(coverValue) ||
+    /^#/.test(coverValue) ||
+    /^(rgb|rgba|hsl|hsla|var)\(/i.test(coverValue) ||
+    /^[a-z]+$/i.test(coverValue)
+  ){
+    element.style.background = coverValue;
+  }
+
+  /*
+   * Enlaces normales, imágenes de Unsplash,
+   * archivos data:image y direcciones blob.
+   */
+  else {
+    element.style.backgroundImage =
+      'url(' + JSON.stringify(coverValue) + ')';
+  }
+
+  element.style.backgroundSize = 'cover';
+  element.style.backgroundRepeat = 'no-repeat';
+}
+
 function renderPage(){
   var p = cur();
   document.title = (p.title || 'Sin título') + ' · Cuaderno';
@@ -670,8 +714,14 @@ function renderPage(){
     + '<button id="pageMenuBtn" title="Opciones de la página">⋯</button>';
   var h = '';
   if(p.cover){
-    h += '<div id="cover" style="background:' + p.cover + '"><div class="cover-acts"><button id="coverChange">Cambiar</button><button id="coverRemove">Quitar</button></div></div>';
-  }
+  h +=
+    '<div id="cover">' +
+      '<div class="cover-acts">' +
+        '<button id="coverChange">Cambiar</button>' +
+        '<button id="coverRemove">Quitar</button>' +
+      '</div>' +
+    '</div>';
+}
   h += '<div id="pagepad" class="' + padClasses(p) + '">'
     +  '<div id="phead" class="' + (p.cover ? 'hascover' : '') + '">'
     +    '<div class="ghosts">'
@@ -684,9 +734,27 @@ function renderPage(){
     +  '<div id="blocks"></div>'
     +  '<div id="pagebottom"></div>'
     + '</div>';
+  
+
   contentEl.innerHTML = h;
-  renderBlocks();
+
+var coverElement = $('#cover');
+
+if(coverElement){
+  applyCoverBackground(
+    coverElement,
+    p.cover
+  );
+
+  coverElement.style.backgroundPosition =
+    'center ' +
+    (p.coverPos == null ? 50 : p.coverPos) +
+    '%';
 }
+
+renderBlocks();
+}
+  
 
 /* ---------- bloques ---------- */
 function visibleBlocks(){
@@ -2193,7 +2261,33 @@ function coverAdvancedPopup(x,y){
     '<div class="unsplash-grid"></div>';
 }
   $$('.cover-tile',body).forEach(function(b){b.onclick=function(){choose(b.dataset.v)}});
-  var fb=$('#coverFileBtn',body);if(fb)fb.onclick=function(){$('#coverFile',body).click()};var fi=$('#coverFile',body);if(fi)fi.onchange=function(){var f=fi.files[0];if(!f)return;var rd=new FileReader();rd.onload=function(){choose(rd.result)};rd.readAsDataURL(f)};
+  var fb = $('#coverFileBtn', body);
+
+if(fb){
+  fb.onclick = function(){
+    $('#coverFile', body).click();
+  };
+}
+
+var fi = $('#coverFile', body);
+
+if(fi){
+  fi.onchange = function(){
+    var file = fi.files[0];
+
+    if(!file) return;
+
+    var reader = new FileReader();
+
+    reader.onload = function(){
+      choose(
+        String(reader.result || '')
+      );
+    };
+
+    reader.readAsDataURL(file);
+  };
+}
   var ok=$('#coverUrlOk',body);if(ok)ok.onclick=function(){var v=$('#coverUrl',body).value.trim();if(v)choose('url("'+v.replace(/"/g,'%22')+'")')};
   if(tab === 'unsplash'){
   var grid = $('.unsplash-grid', body);
@@ -2284,14 +2378,9 @@ $$('.unsplash-result', grid).forEach(function(button){
       ).catch(function(){});
     }
 
-    cur().cover =
-      'url(' + JSON.stringify(imageUrl) + ')';
+    choose(imageUrl);
 
-    cur().coverPos = 50;
-
-    closePopup();
-    renderPage();
-    save();
+    
   });
 });
   }
