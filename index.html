@@ -1351,10 +1351,23 @@ contentEl.addEventListener('click', function(e){
     return;
   }
   if(t.closest('#addCover')){
-    cur().cover = COVERS[Math.floor(Math.random() * COVERS.length)];
-    renderPage(); save();
-    return;
-  }
+    
+Reemplázalo por:
+
+### Después
+
+```javascript
+if(t.closest('#addCover')){
+  var addCoverBtn = t.closest('#addCover');
+  var addCoverRect = addCoverBtn.getBoundingClientRect();
+
+  coverPopup(
+    Math.max(8, addCoverRect.left),
+    addCoverRect.bottom + 8
+  );
+
+  return;
+}
   if(t.closest('#picon')){
     var ri = t.closest('#picon').getBoundingClientRect();
     emojiPopup(ri.left, ri.bottom + 6, function(v){
@@ -2142,11 +2155,241 @@ function coverAdvancedPopup(x,y){
   if(tab==='gallery')body.innerHTML='<div class="plabel">Colores y degradados</div><div class="cover-grid">'+COVER_COLORS.concat(COVERS).map(function(c){return '<button class="cover-tile" data-v="'+esc(c)+'" style="background:'+c+'"></button>'}).join('')+'</div>';
   if(tab==='upload')body.innerHTML='<div class="upload-zone">Arrastra o selecciona una imagen<br><br><button id="coverFileBtn">Elegir archivo</button><input id="coverFile" type="file" accept="image/*" hidden></div>';
   if(tab==='link')body.innerHTML='<div class="link-row"><input id="coverUrl" placeholder="Pega el enlace de una imagen"><button id="coverUrlOk">Guardar</button></div>';
-  if(tab==='unsplash')body.innerHTML='<div class="unsplash-search"><input id="usQ" placeholder="Buscar visualmente en la colección"><button id="usGo">Buscar</button></div><div class="unsplash-grid"></div>';
+  if(tab === 'unsplash'){
+  var savedKey =
+    localStorage.getItem('cuaderno_unsplash_access_key') || '';
+
+  body.innerHTML =
+    '<div class="unsplash-search">' +
+      '<input id="usQ" placeholder="Ejemplo: naturaleza, educación, matemáticas">' +
+      '<button id="usGo">Buscar</button>' +
+    '</div>' +
+
+    '<div class="link-row" style="margin-top:8px">' +
+      '<input id="usKey" type="password" ' +
+      'placeholder="Access Key de Unsplash" ' +
+      'value="' + esc(savedKey) + '">' +
+
+      '<button id="usSaveKey">Guardar clave</button>' +
+    '</div>' +
+
+    '<div class="unsplash-grid"></div>';
+}
   $$('.cover-tile',body).forEach(function(b){b.onclick=function(){choose(b.dataset.v)}});
   var fb=$('#coverFileBtn',body);if(fb)fb.onclick=function(){$('#coverFile',body).click()};var fi=$('#coverFile',body);if(fi)fi.onchange=function(){var f=fi.files[0];if(!f)return;var rd=new FileReader();rd.onload=function(){choose(rd.result)};rd.readAsDataURL(f)};
   var ok=$('#coverUrlOk',body);if(ok)ok.onclick=function(){var v=$('#coverUrl',body).value.trim();if(v)choose('url("'+v.replace(/"/g,'%22')+'")')};
-  if(tab==='unsplash'){var grid=$('.unsplash-grid',body);function usRender(q){var seed=Math.abs(Array.from(q||'').reduce(function(a,ch){return a+ch.charCodeAt(0)},0));var arr=UNSPLASH_SET.slice().sort(function(a,b){return ((a.length+seed)%17)-((b.length+seed)%17)});grid.innerHTML=arr.map(function(u){return '<button data-u="'+u+'" style="background-image:url(\''+u+'\')"></button>'}).join('');$$('button',grid).forEach(function(b){b.onclick=function(){choose('url("'+b.dataset.u+'")')}})}usRender('');$('#usGo',body).onclick=function(){usRender($('#usQ',body).value)};$('#usQ',body).onkeydown=function(e){if(e.key==='Enter')usRender(e.target.value)};}
+  if(tab === 'unsplash'){
+  var grid = $('.unsplash-grid', body);
+  var queryInput = $('#usQ', body);
+  var searchButton = $('#usGo', body);
+  var keyInput = $('#usKey', body);
+  var saveKeyButton = $('#usSaveKey', body);
+
+  function showUnsplashMessage(message, danger){
+    var previous = $('.unsplash-message', body);
+
+    if(previous){
+      previous.remove();
+    }
+
+    var messageBox = document.createElement('div');
+
+    messageBox.className = 'unsplash-message';
+    messageBox.style.marginTop = '10px';
+    messageBox.style.padding = '9px 10px';
+    messageBox.style.borderRadius = '6px';
+    messageBox.style.fontSize = '12.5px';
+    messageBox.style.background = 'var(--hover)';
+    messageBox.style.color = danger
+      ? 'var(--danger)'
+      : 'var(--fg2)';
+
+    messageBox.textContent = message;
+    body.appendChild(messageBox);
+  }
+
+  function renderUnsplashResults(photos){
+    if(!photos || photos.length === 0){
+      grid.innerHTML =
+        '<div class="pempty" style="grid-column:1/-1">' +
+          'No se encontraron imágenes.' +
+        '</div>';
+
+      return;
+    }
+
+    grid.innerHTML = photos.map(function(photo){
+      var thumbnail =
+        photo.urls.small ||
+        photo.urls.thumb;
+
+      var completeImage =
+        photo.urls.regular ||
+        photo.urls.full;
+
+      return (
+        '<button class="unsplash-result"' +
+          ' data-full="' + esc(completeImage) + '"' +
+          ' data-download="' +
+            esc(photo.links.download_location || '') +
+          '"' +
+          ' title="Foto de ' +
+            esc(photo.user.name || 'Unsplash') +
+          '"' +
+          ' style="background-image:url(\'' +
+            esc(thumbnail) +
+          '\')">' +
+        '</button>'
+      );
+    }).join('');
+
+    $$('.unsplash-result', grid).forEach(function(button){
+      button.addEventListener('click', function(){
+        var imageUrl = button.dataset.full;
+        var downloadLocation = button.dataset.download;
+
+        var accessKey =
+          localStorage.getItem(
+            'cuaderno_unsplash_access_key'
+          ) || '';
+
+        if(downloadLocation && accessKey){
+          fetch(
+            downloadLocation +
+            '?client_id=' +
+            encodeURIComponent(accessKey)
+          ).catch(function(){});
+        }
+
+        choose(
+          'url("' +
+          imageUrl.replace(/"/g, '%22') +
+          '")'
+        );
+      });
+    });
+  }
+
+  saveKeyButton.addEventListener('click', function(){
+    var accessKey = keyInput.value.trim();
+
+    if(!accessKey){
+      localStorage.removeItem(
+        'cuaderno_unsplash_access_key'
+      );
+
+      showUnsplashMessage(
+        'La clave fue eliminada.',
+        false
+      );
+
+      return;
+    }
+
+    localStorage.setItem(
+      'cuaderno_unsplash_access_key',
+      accessKey
+    );
+
+    showUnsplashMessage(
+      'Access Key guardada en este navegador.',
+      false
+    );
+  });
+
+  function searchUnsplash(){
+    var query = queryInput.value.trim();
+
+    var accessKey =
+      keyInput.value.trim() ||
+      localStorage.getItem(
+        'cuaderno_unsplash_access_key'
+      ) ||
+      '';
+
+    if(!query){
+      showUnsplashMessage(
+        'Escribe una palabra para buscar.',
+        true
+      );
+
+      queryInput.focus();
+      return;
+    }
+
+    if(!accessKey){
+      showUnsplashMessage(
+        'Primero pega y guarda tu Access Key de Unsplash.',
+        true
+      );
+
+      keyInput.focus();
+      return;
+    }
+
+    localStorage.setItem(
+      'cuaderno_unsplash_access_key',
+      accessKey
+    );
+
+    searchButton.disabled = true;
+    searchButton.textContent = 'Buscando…';
+
+    fetch(
+      'https://api.unsplash.com/search/photos' +
+      '?query=' + encodeURIComponent(query) +
+      '&orientation=landscape' +
+      '&per_page=18' +
+      '&client_id=' + encodeURIComponent(accessKey)
+    )
+    .then(function(response){
+      if(!response.ok){
+        throw new Error(
+          'Unsplash respondió con el código ' +
+          response.status
+        );
+      }
+
+      return response.json();
+    })
+    .then(function(data){
+      var previousMessage =
+        $('.unsplash-message', body);
+
+      if(previousMessage){
+        previousMessage.remove();
+      }
+
+      renderUnsplashResults(data.results || []);
+    })
+    .catch(function(error){
+      showUnsplashMessage(
+        'No se pudo realizar la búsqueda. ' +
+        'Revisa la Access Key y tu conexión. ' +
+        error.message,
+        true
+      );
+    })
+    .finally(function(){
+      searchButton.disabled = false;
+      searchButton.textContent = 'Buscar';
+    });
+  }
+
+  searchButton.addEventListener(
+    'click',
+    searchUnsplash
+  );
+
+  queryInput.addEventListener(
+    'keydown',
+    function(event){
+      if(event.key === 'Enter'){
+        searchUnsplash();
+      }
+    }
+  );
+}
  }
  $$('.tabs button',p).forEach(function(b){b.onclick=function(){draw(b.dataset.tab)}});draw('gallery');placePopup(x,y);
 }
